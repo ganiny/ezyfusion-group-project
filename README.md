@@ -51,8 +51,13 @@ Key guarantees:
   - **Audit log:** UPDATE fails even as the database owner.
   - **Tooling:** typecheck and lint pass.
 - **Environment note:** Docker Desktop on my machine hung repeatedly during the test, which cost a large part of the build time. Supabase Studio's health check also failed once; `npx supabase start -x studio` works around it locally.
-- **UI (section 9):** not built beyond the scaffold; I prioritized billing, access control, payments and the webhook as the brief instructs. The API covers every flow.
-- **Bonus items:** only unit tests for billing and allocation planning (`planAllocation`).
+- **UI (section 9), minimal and built last:**
+  - **Pages:** `/login`, `/dashboard` (overdue count, 6-month collections, lease list), `/leases/[id]`, `/portal` and `/payments/return`.
+  - **Lease page:** invoices, payments with 60-second signed slip links, the record-payment form (ringgit parsed with `parseRinggitToSen`, Malaysia-time `datetime-local` input, slip upload), and manager approve/reject/void with a reason dialog.
+  - **Tenant portal:** lease, invoices, payments, amount due now, Pay now showing the bill id and amount, and phone editing through supabase-js under RLS.
+  - **Return page:** read-only; it never settles a bill.
+  - Toasts and a loading skeleton are in place. The pages were only spot-checked: the production build passes, but I did not click through every flow in a browser.
+- **Bonus items:** only unit tests for billing and allocation planning (`planAllocation`). There is no create-lease form; leases are created through the API.
 
 ## What I would do next
 
