@@ -1,8 +1,11 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 // Prisma 7: the connection URL lives in prisma7.config.ts (CLI) and in the
 // driver adapter in lib/prisma.ts (runtime), not in this datasource block.
+//
+// The database is owned by supabase/migrations/ (Prisma Migrate is not used).
+// This file mirrors those tables for typed server-side access. Constraints
+// Prisma cannot express (CHECKs, the lease overlap EXCLUDE constraint, RLS,
+// triggers) live only in the migration. Columns referencing auth.users are
+// plain UUIDs here because Prisma does not manage the auth schema.
 
 generator client {
   provider = "prisma-client"
@@ -11,4 +14,168 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+model Organization {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("organizations")
+}
+
+model Membership {
+  userId    String   @id @map("user_id") @db.Uuid
+  orgId     String   @map("org_id") @db.Uuid
+  role      String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([orgId])
+  @@map("memberships")
+}
+
+model Unit {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId     String   @map("org_id") @db.Uuid
+  name      String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  leases    Lease[]
+
+  @@unique([orgId, name])
+  @@unique([id, orgId])
+  @@map("units")
+}
+
+model Tenant {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId     String   @map("org_id") @db.Uuid
+  userId    String?  @unique @map("user_id") @db.Uuid
+  fullName  String   @map("full_name")
+  email     String
+  phone     String?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  leases    Lease[]
+
+  @@unique([id, orgId])
+  @@index([orgId])
+  @@map("tenants")
+}
+
+model Lease {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String        @map("org_id") @db.Uuid
+  unitId         String        @map("unit_id") @db.Uuid
+  tenantId       String        @map("tenant_id") @db.Uuid
+  startDate      DateTime      @map("start_date") @db.Date
+  endDate        DateTime      @map("end_date") @db.Date
+  monthlyRentSen BigInt        @map("monthly_rent_sen")
+  depositSen     BigInt        @map("deposit_sen")
+  createdBy      String?       @map("created_by") @db.Uuid
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  unit           Unit          @relation(fields: [unitId, orgId], references: [id, orgId], onDelete: NoAction, onUpdate: NoAction)
+  tenant         Tenant        @relation(fields: [tenantId, orgId], references: [id, orgId], onDelete: NoAction, onUpdate: NoAction)
+  invoices       Invoice[]
+  payments       Payment[]
+  gatewayBills   GatewayBill[]
+
+  @@unique([id, orgId])
+  @@index([orgId])
+  @@index([tenantId])
+  @@map("leases")
+}
+
+model Invoice {
+  id          String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String              @map("org_id") @db.Uuid
+  leaseId     String              @map("lease_id") @db.Uuid
+  kind        String
+  periodIndex Int?                @map("period_index")
+  periodStart DateTime?           @map("period_start") @db.Date
+  periodEnd   DateTime?           @map("period_end") @db.Date
+  dueDate     DateTime            @map("due_date") @db.Date
+  amountSen   BigInt              @map("amount_sen")
+  createdAt   DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  lease       Lease               @relation(fields: [leaseId, orgId], references: [id, orgId], onDelete: NoAction, onUpdate: NoAction)
+  allocations PaymentAllocation[]
+
+  @@unique([id, orgId])
+  @@unique([leaseId, periodIndex])
+  @@index([leaseId, dueDate])
+  @@index([orgId])
+  @@map("invoices")
+}
+
+model GatewayBill {
+  id            String    @id
+  orgId         String    @map("org_id") @db.Uuid
+  leaseId       String    @map("lease_id") @db.Uuid
+  amountSen     BigInt    @map("amount_sen")
+  status        String    @default("pending")
+  transactionId String?   @map("transaction_id")
+  paidAt        DateTime? @map("paid_at") @db.Timestamptz(6)
+  createdBy     String?   @map("created_by") @db.Uuid
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  lease         Lease     @relation(fields: [leaseId, orgId], references: [id, orgId], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([id, orgId])
+  @@index([leaseId])
+  @@index([orgId])
+  @@map("gateway_bills")
+}
+
+model Payment {
+  id             String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String              @map("org_id") @db.Uuid
+  leaseId        String              @map("lease_id") @db.Uuid
+  amountSen      BigInt              @map("amount_sen")
+  unappliedSen   BigInt              @default(0) @map("unapplied_sen")
+  method         String
+  status         String
+  receivedAt     DateTime            @map("received_at") @db.Timestamptz(6)
+  slipPath       String?             @map("slip_path")
+  // FK (gateway_bill_id, org_id) -> gateway_bills exists in SQL; not modelled
+  // as a Prisma relation because it mixes an optional and a required column.
+  gatewayBillId  String?             @unique @map("gateway_bill_id")
+  recordedBy     String?             @map("recorded_by") @db.Uuid
+  decidedBy      String?             @map("decided_by") @db.Uuid
+  decidedAt      DateTime?           @map("decided_at") @db.Timestamptz(6)
+  decisionReason String?             @map("decision_reason")
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  lease          Lease               @relation(fields: [leaseId, orgId], references: [id, orgId], onDelete: NoAction, onUpdate: NoAction)
+  allocations    PaymentAllocation[]
+
+  @@unique([id, orgId])
+  @@index([leaseId])
+  @@index([orgId, status, receivedAt])
+  @@map("payments")
+}
+
+model PaymentAllocation {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId     String   @map("org_id") @db.Uuid
+  paymentId String   @map("payment_id") @db.Uuid
+  invoiceId String   @map("invoice_id") @db.Uuid
+  amountSen BigInt   @map("amount_sen")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  payment   Payment  @relation(fields: [paymentId, orgId], references: [id, orgId], onDelete: NoAction, onUpdate: NoAction)
+  invoice   Invoice  @relation(fields: [invoiceId, orgId], references: [id, orgId], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([paymentId, invoiceId])
+  @@index([invoiceId])
+  @@index([orgId])
+  @@map("payment_allocations")
+}
+
+model AuditLog {
+  id        BigInt   @id @default(autoincrement())
+  orgId     String   @map("org_id") @db.Uuid
+  actorId   String?  @map("actor_id") @db.Uuid
+  action    String
+  entityId  String   @map("entity_id")
+  details   Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([orgId, createdAt(sort: Desc)])
+  @@map("audit_log")
 }
