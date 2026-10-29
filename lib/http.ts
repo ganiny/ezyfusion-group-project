@@ -39,10 +39,14 @@ export function route<Ctx>(handler: (req: Request, ctx: Ctx) => Promise<Response
   }
 }
 
+/**
+ * Lenient: invalid or missing JSON becomes null instead of throwing, so the
+ * service still answers 401/404/403 before validating the body (400).
+ */
 export async function readJson(req: Request): Promise<unknown> {
   try {
     return await req.json()
   } catch {
-    throw new HttpError(400, 'Request body must be valid JSON')
+    return null
   }
 }

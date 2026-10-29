@@ -11,6 +11,7 @@
     "format": "prettier --write \"**/*.{ts,tsx}\"",
     "typecheck": "tsc --noEmit",
     "postinstall": "prisma generate",
+    "seed": "tsx --conditions=react-server --env-file=.env.local scripts/seed.ts",
     "test": "cross-env TZ=UTC vitest run && cross-env TZ=Asia/Kuala_Lumpur vitest run && cross-env TZ=America/New_York vitest run",
     "db:generate": "prisma generate",
     "db:studio": "prisma studio"
