@@ -40,8 +40,17 @@ Key guarantees:
 
 ## Status, known issues, and what I skipped
 
-- **Verified:** `lib/billing.ts` (62 tests × 3 timezones), typecheck, lint.
-- **Not fully verified end to end:** Docker Desktop on my machine repeatedly hung during the test (`supabase db reset`/`stop` could not kill the DB container), so I could not run the seed, the API, and the concurrency checks against a live database before time ran out. The migration and services are written to the brief, but treat them as unexercised.
+- **Verified:**
+  - **Billing:** `lib/billing.ts`, 62 tests under each of the 3 timezones.
+  - **Database and seed:** the migration applies cleanly. `npm run seed` produces the brief's invoices and allocations (Aisyah: deposit, P0, and RM 500 of P1 covered), with the slip stored under the org folder.
+  - **API access control:** answered as each seeded user. 401 without a token, 404 for another tenant's or another org's lease, 403 for wrong roles, 404 for a lease on another org's unit.
+  - **Collections:** the 2026-01..03 report returns `[300000, 0, 200000]`.
+  - **Concurrency:** two simultaneous staff payments over the cap give 201 + 422; two simultaneous overlapping leases give 201 + 409.
+  - **Webhook:** the brief's test vector matches. Forged → 401, unknown bill → 404, wrong amount → 422. Five simultaneous identical callbacks create exactly one payment, allocated once, and a late `paid=false` leaves the bill paid.
+  - **Data API and Storage:** anon is denied everywhere. A tenant sees only their own lease, row and unit, can update `phone` but not `full_name` (403). Staff cannot insert payments (403) and see no `audit_log` rows. A tenant cannot upload or list slips, and there are no `/rpc` functions.
+  - **Audit log:** UPDATE fails even as the database owner.
+  - **Tooling:** typecheck and lint pass.
+- **Environment note:** Docker Desktop on my machine hung repeatedly during the test, which cost a large part of the build time. Supabase Studio's health check also failed once; `npx supabase start -x studio` works around it locally.
 - **UI (section 9):** not built beyond the scaffold; I prioritized billing, access control, payments and the webhook as the brief instructs. The API covers every flow.
 - **Bonus items:** only unit tests for billing and allocation planning (`planAllocation`).
 
